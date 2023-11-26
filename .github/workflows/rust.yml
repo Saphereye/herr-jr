@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_LOG: trace
+  TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
 
 jobs:
   build:

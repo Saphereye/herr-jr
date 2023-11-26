@@ -16,7 +16,7 @@ async fn main() {
     pretty_env_logger::init();
     log::info!("Starting command bot...");
 
-    let bot = Bot::new("API_KEY_HIDDEN");
+    let bot = Bot::from_env();
 
     log::info!("Reading todo.txt...");
     match std::fs::read_to_string("todo.txt") {
