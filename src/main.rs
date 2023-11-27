@@ -7,9 +7,12 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use tokio::sync::Mutex;
+use std::collections::HashSet;
 
 lazy_static! {
+    // todo make the todo list local for each user
     static ref TODO_LIST: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static ref USERS_LIST: Mutex<HashSet<ChatId>> = Mutex::new(HashSet::new());
 }
 
 #[tokio::main]
@@ -49,6 +52,27 @@ async fn main() {
         }
     }
 
+    log::info!("Reading users.txt...");
+    match std::fs::read_to_string("users.txt") {
+        Ok(content) => {
+            let users: Vec<ChatId> = content.lines().map(|line| ChatId(line.parse::<i64>().unwrap())).collect();
+            *USERS_LIST.lock().await = users.into_iter().collect();
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            log::info!("users.txt not found");
+        }
+        Err(err) => {
+            log::error!("Failed to read users.txt: {}", err);
+        }
+    }
+
+    log::info!("Sending greeting messages...");
+    for user in USERS_LIST.lock().await.iter() {
+        let resp = reqwest::get("https://wttr.in/Hyderabad?format=%l:+%c+%t+%p+%m").await.unwrap();
+        let content = resp.text().await.unwrap();
+        bot.send_message(user.clone(), format!("Hi!\n\nToday's weather in {}\n\nYour todo list is: \n-{}", content, TODO_LIST.lock().await.join("\n-"))).await.unwrap();
+    }
+
     Command::repl(bot, answer).await;
     log::info!("Stopping bot...");
 
@@ -56,6 +80,11 @@ async fn main() {
     let todo_list = TODO_LIST.lock().await.clone();
     let content = todo_list.join("\n");
     std::fs::write("todo.txt", content).expect("Unable to write file");
+
+    log::info!("Writing users list...");
+    let users_list = USERS_LIST.lock().await.clone();
+    let content = users_list.iter().map(|user| user.to_string()).collect::<Vec<String>>().join("\n");
+    std::fs::write("users.txt", content).expect("Unable to write file");
 }
 
 #[derive(BotCommands, Clone, Debug)]
@@ -88,11 +117,17 @@ enum Command {
 
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
     log::info!("Got command {:?}", cmd);
+
+    if !USERS_LIST.lock().await.contains(&msg.chat.id) {
+        USERS_LIST.lock().await.insert(msg.chat.id);
+        bot.send_message(msg.chat.id, format!("Hi {}!", (msg.from().expect("Invalid user").username.clone()).expect("Invalid string"))).await?;
+    }
+
     match cmd {
         Command::Help => {
             bot.send_message(
                 msg.chat.id,
-                format!("Made by <b>Herr Das</b>\n\n{}", Command::descriptions()),
+                format!("Hi {} !\n\nThis Bot was made by <b>Herr Das</b>\n\n{}", msg.from().expect("No user found").first_name.clone(), Command::descriptions()),
             )
             .parse_mode(ParseMode::Html)
             .await?
@@ -135,7 +170,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             bot.send_message(msg.chat.id, content).await?
         }
         Command::Weather => {
-            let resp = reqwest::get("https://wttr.in/?format=%l:+%c+%t+%p+%m\n").await?;
+            let resp = reqwest::get("https://wttr.in/Hyderabad?format=%l:+%c+%t+%p+%m").await?;
             let content = resp.text().await?;
             bot.send_message(msg.chat.id, content).await?
         }

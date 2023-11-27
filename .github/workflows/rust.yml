@@ -1,37 +1,37 @@
-name: Rust
+# name: Rust
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+# on:
+#   push:
+#     branches: [ "master" ]
+#   pull_request:
+#     branches: [ "master" ]
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_LOG: trace
-  TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
+# env:
+#   CARGO_TERM_COLOR: always
+#   RUST_LOG: trace
+#   TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+#   cancel-in-progress: true
 
-jobs:
-  build:
+# jobs:
+#   build:
 
-    runs-on: ubuntu-latest
+#     runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+#     steps:
+#     - uses: actions/checkout@v3
+#     - name: Build
+#       run: cargo build --verbose
+#     - name: Run tests
+#       run: cargo test --verbose
   
-  deploy:
+#   deploy:
 
-    runs-on: ubuntu-latest
+#     runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v3
-    - name: Deploy
-      run: cargo run --release
+#     steps:
+#     - uses: actions/checkout@v3
+#     - name: Deploy
+#       run: cargo run --release
