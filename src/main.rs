@@ -6,6 +6,7 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use tokio::sync::Mutex;
+use dotenv::dotenv;
 
 lazy_static! {
     static ref TODO_LIST: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -13,6 +14,7 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
     pretty_env_logger::init();
     log::info!("Starting command bot...");
 
