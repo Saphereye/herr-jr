@@ -11,16 +11,16 @@ env:
   RUST_LOG: trace
   TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
 
     runs-on: ubuntu-latest
 
     steps:
-    - name: Cancel previous runs
-      uses: styfle/cancel-workflow-runs-action@0.8.0
-      with:
-        access_token: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
@@ -32,10 +32,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Cancel previous runs
-      uses: styfle/cancel-workflow-runs-action@0.8.0
-      with:
-        access_token: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v3
     - name: Deploy
       run: cargo run --release
