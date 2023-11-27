@@ -1,3 +1,4 @@
+use dotenv::dotenv;
 use lazy_static::lazy_static;
 use reqwest::{Error, Url};
 use teloxide::{
@@ -6,7 +7,6 @@ use teloxide::{
     utils::command::BotCommands,
 };
 use tokio::sync::Mutex;
-use dotenv::dotenv;
 
 lazy_static! {
     static ref TODO_LIST: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -14,11 +14,26 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
     pretty_env_logger::init();
     log::info!("Starting command bot...");
 
-    let bot = Bot::from_env();
+    let bot = match dotenv().ok() {
+        Some(_) => match std::env::var("TELOXIDE_TOKEN") {
+            Ok(value) => {
+                log::info!("TELOXIDE_TOKEN found in .env file");
+                Bot::new(value)
+            }
+            Err(e) => {
+                log::error!("Failed to read TELOXIDE_TOKEN from .env file: {}", e);
+                log::info!("Trying from environment");
+                Bot::from_env()
+            }
+        },
+        None => {
+            log::info!("TELOXIDE_TOKEN not found in .env file, trying from environment");
+            Bot::from_env()
+        }
+    };
 
     log::info!("Reading todo.txt...");
     match std::fs::read_to_string("todo.txt") {
@@ -41,7 +56,6 @@ async fn main() {
     let todo_list = TODO_LIST.lock().await.clone();
     let content = todo_list.join("\n");
     std::fs::write("todo.txt", content).expect("Unable to write file");
-
 }
 
 #[derive(BotCommands, Clone, Debug)]

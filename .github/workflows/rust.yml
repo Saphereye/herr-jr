@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Cancel previous runs
+      uses: styfle/cancel-workflow-runs-action@0.8.0
+      with:
+        access_token: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
@@ -28,7 +32,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Cancel previous runs
+      uses: styfle/cancel-workflow-runs-action@0.8.0
+      with:
+        access_token: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v3
     - name: Deploy
       run: cargo run --release
-    
