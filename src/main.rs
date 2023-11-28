@@ -1,18 +1,21 @@
+use chrono::{Local, Timelike};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use reqwest::{Error, Url};
-use std::{collections::HashSet, time::Duration};
+use serde_json::{from_str, to_string, Value};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use teloxide::{
     prelude::*,
     types::{InputFile, ParseMode},
     utils::command::BotCommands,
 };
 use tokio::{sync::Mutex, time::sleep};
-use chrono::{Local, Timelike};
 
 lazy_static! {
-    // todo make the todo list local for each user
-    static ref TODO_LIST: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static ref TODO_LIST: Mutex<HashMap<ChatId, Vec<String>>> = Mutex::new(HashMap::new());
     static ref USERS_LIST: Mutex<HashSet<ChatId>> = Mutex::new(HashSet::new());
 }
 
@@ -40,16 +43,16 @@ async fn main() {
     };
 
     log::info!("Reading todo.txt...");
-    match std::fs::read_to_string("todo.txt") {
+    match std::fs::read_to_string("todo.json") {
         Ok(content) => {
-            let tasks: Vec<String> = content.lines().map(|line| line.to_string()).collect();
+            let tasks: HashMap<ChatId, Vec<String>> = from_str(&content).unwrap();
             *TODO_LIST.lock().await = tasks;
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            log::info!("todo.txt not found");
+            log::info!("todo.json not found");
         }
         Err(err) => {
-            log::error!("Failed to read todo.txt: {}", err);
+            log::error!("Failed to read todo.json: {}", err);
         }
     }
 
@@ -101,12 +104,7 @@ async fn main() {
             let content = resp.text().await.unwrap();
             send_to_all(
                 &bot,
-                format!(
-                    "Good Morning!\n\nToday's weather in {}\n\nYour todo list is: \n-{}",
-                    content,
-                    TODO_LIST.lock().await.join("\n-")
-                )
-                .as_str(),
+                format!("Good Morning!\n\nToday's weather in {}", content,).as_str(),
             )
             .await;
         }
@@ -117,9 +115,9 @@ async fn main() {
     log::info!("Stopping bot...");
 
     log::info!("Writing todo.txt...");
-    let todo_list = TODO_LIST.lock().await.clone();
-    let content = todo_list.join("\n");
-    std::fs::write("todo.txt", content).expect("Unable to write file");
+    let todo_list = TODO_LIST.lock().await;
+    let json = to_string(&*todo_list).unwrap();
+    std::fs::write("todo.json", json).unwrap();
 
     log::info!("Writing users list...");
     let users_list = USERS_LIST.lock().await.clone();
@@ -239,14 +237,16 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
         Command::Coin => bot.send_message(msg.chat.id, "🪙").await?,
         Command::Todo(task) => {
             log::info!("Adding '{}' to todo list", task);
-            TODO_LIST.lock().await.push(task.clone());
+            let mut todo_list = TODO_LIST.lock().await;
+            let user_todo_list = todo_list.entry(msg.chat.id).or_insert_with(Vec::new);
+            user_todo_list.push(task.clone());
             bot.send_message(msg.chat.id, format!("Added <u>{}</u> to todo list", task))
                 .parse_mode(ParseMode::Html)
                 .await?
         }
         Command::List => {
             let mut content = "<u>Todo list:</u>\n".to_string();
-            for (i, task) in TODO_LIST.lock().await.iter().enumerate() {
+            for (i, task) in (TODO_LIST.lock().await)[&msg.chat.id].iter().enumerate() {
                 content.push_str(&format!("{}. {}\n", i + 1, task));
             }
             bot.send_message(msg.chat.id, content)
