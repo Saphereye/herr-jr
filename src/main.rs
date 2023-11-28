@@ -1,13 +1,14 @@
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use reqwest::{Error, Url};
+use std::{collections::HashSet, time::Duration};
 use teloxide::{
     prelude::*,
     types::{InputFile, ParseMode},
     utils::command::BotCommands,
 };
-use tokio::sync::Mutex;
-use std::collections::HashSet;
+use tokio::{sync::Mutex, time::sleep};
+use chrono::{Local, Timelike};
 
 lazy_static! {
     // todo make the todo list local for each user
@@ -55,7 +56,10 @@ async fn main() {
     log::info!("Reading users.txt...");
     match std::fs::read_to_string("users.txt") {
         Ok(content) => {
-            let users: Vec<ChatId> = content.lines().map(|line| ChatId(line.parse::<i64>().unwrap())).collect();
+            let users: Vec<ChatId> = content
+                .lines()
+                .map(|line| ChatId(line.parse::<i64>().unwrap()))
+                .collect();
             *USERS_LIST.lock().await = users.into_iter().collect();
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -66,14 +70,50 @@ async fn main() {
         }
     }
 
-    log::info!("Sending greeting messages...");
-    for user in USERS_LIST.lock().await.iter() {
-        let resp = reqwest::get("https://wttr.in/Hyderabad?format=%l:+%c+%t+%p+%m").await.unwrap();
-        let content = resp.text().await.unwrap();
-        bot.send_message(user.clone(), format!("Hi!\n\nToday's weather in {}\n\nYour todo list is: \n-{}", content, TODO_LIST.lock().await.join("\n-"))).await.unwrap();
-    }
+    send_to_all(
+        &bot,
+        "Bot started successfully. Use /help to see available commands.",
+    )
+    .await;
 
-    Command::repl(bot, answer).await;
+    // log::info!("Sending greeting messages...");
+    // for user in USERS_LIST.lock().await.iter() {
+    //     let resp = reqwest::get("https://wttr.in/Hyderabad?format=%l:+%c+%t+%p+%m").await.unwrap();
+    //     let content = resp.text().await.unwrap();
+    //     bot.send_message(user.clone(), format!("Hi!\n\nToday's weather in {}\n\nYour todo list is: \n-{}", content, TODO_LIST.lock().await.join("\n-"))).await.unwrap();
+    // }
+
+    let bot_copy = bot.clone();
+
+    tokio::spawn(async move {
+        loop {
+            let now = Local::now();
+            let next_time = (now.date() + chrono::Duration::days(1)).and_hms(8, 0, 0); // Next day at 8 AM
+            let duration_until_next_time = (next_time - now)
+                .to_std()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+
+            sleep(duration_until_next_time).await;
+            log::info!("Sending greeting messages...");
+            let resp = reqwest::get("https://wttr.in/Hyderabad?format=%l:+%c+%t+%p+%m")
+                .await
+                .unwrap();
+            let content = resp.text().await.unwrap();
+            send_to_all(
+                &bot,
+                format!(
+                    "Good Morning!\n\nToday's weather in {}\n\nYour todo list is: \n-{}",
+                    content,
+                    TODO_LIST.lock().await.join("\n-")
+                )
+                .as_str(),
+            )
+            .await;
+        }
+    });
+
+    Command::repl(bot_copy.clone(), answer).await;
+    send_to_all(&bot_copy, "The bot is shutting down.").await;
     log::info!("Stopping bot...");
 
     log::info!("Writing todo.txt...");
@@ -83,8 +123,18 @@ async fn main() {
 
     log::info!("Writing users list...");
     let users_list = USERS_LIST.lock().await.clone();
-    let content = users_list.iter().map(|user| user.to_string()).collect::<Vec<String>>().join("\n");
+    let content = users_list
+        .iter()
+        .map(|user| user.to_string())
+        .collect::<Vec<String>>()
+        .join("\n");
     std::fs::write("users.txt", content).expect("Unable to write file");
+}
+
+async fn send_to_all(bot: &Bot, msg: &str) {
+    for user in USERS_LIST.lock().await.iter() {
+        bot.send_message(*user, msg).await.unwrap();
+    }
 }
 
 #[derive(BotCommands, Clone, Debug)]
@@ -120,14 +170,25 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
 
     if !USERS_LIST.lock().await.contains(&msg.chat.id) {
         USERS_LIST.lock().await.insert(msg.chat.id);
-        bot.send_message(msg.chat.id, format!("Hi {}!", (msg.from().expect("Invalid user").username.clone()).expect("Invalid string"))).await?;
+        bot.send_message(
+            msg.chat.id,
+            format!(
+                "Hi {}!",
+                (msg.from().expect("Invalid user").username.clone()).expect("Invalid string")
+            ),
+        )
+        .await?;
     }
 
     match cmd {
         Command::Help => {
             bot.send_message(
                 msg.chat.id,
-                format!("Hi {} !\n\nThis Bot was made by <b>Herr Das</b>\n\n{}", msg.from().expect("No user found").first_name.clone(), Command::descriptions()),
+                format!(
+                    "Hi {} !\n\nThis Bot was made by <b>Herr Das</b>\n\n{}",
+                    msg.from().expect("No user found").first_name.clone(),
+                    Command::descriptions()
+                ),
             )
             .parse_mode(ParseMode::Html)
             .await?
